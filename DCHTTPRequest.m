@@ -33,6 +33,8 @@
 
 @property (nonatomic, strong, readonly) NSMutableDictionary *headerFields;
 @property (nonatomic, strong) NSURLConnection *connection;
+@property (nonatomic, assign) BOOL backgroundSupported;
+@property (nonatomic, assign) UIBackgroundTaskIdentifier backgroundTaskIdentifier;
 @property (nonatomic, assign) BOOL executing;
 @property (nonatomic, assign) BOOL finished;
 @property (nonatomic, copy) DCHTTPRequestCompletionBlock completionHandler;
@@ -60,6 +62,8 @@
 @synthesize responseString = _responseString;
 @synthesize headerFields = _headerFields;
 @synthesize connection = _connection;
+@synthesize backgroundSupported = _backgroundSupported;
+@synthesize backgroundTaskIdentifier = _backgroundTaskIdentifier;
 @synthesize executing = _executing;
 @synthesize finished = _finished;
 @synthesize completionHandler = _completionHandler;
@@ -108,6 +112,12 @@
 		self.url = aURL;
 		self.cachePolicy = NSURLRequestUseProtocolCachePolicy;
 		self.timeoutInterval = 60.0f;
+		
+		if ([[UIDevice currentDevice] respondsToSelector:@selector(isMultitaskingSupported)]) {
+			self.backgroundSupported = device.multitaskingSupported;
+		} else {
+			self.backgroundSupported = NO;
+		}
 	}
 	
 	return self;
@@ -139,6 +149,8 @@
 }
 
 - (void)startImmediately {
+	[self startBackgroundTask];
+	
 	NSURLRequest *request = [self createRequest];
 	
 	self.responseData = [[NSMutableData alloc] init];
@@ -153,6 +165,8 @@
 }
 
 - (void)startImmediatelyWithCompletionHandler:(DCHTTPRequestCompletionBlock)aHandler {
+	[self startBackgroundTask];
+	
 	NSURLRequest *request = [self createRequest];
 	
 	self.responseData = [[NSMutableData alloc] init];
@@ -179,10 +193,12 @@
 }
 
 - (void)enqueue {
-	[[DCHTTPRequest connectionQueue] addOperation:self];
+	[self enqueueWithCompletionHandler:nil];
 }
 
 - (void)enqueueWithCompletionHandler:(DCHTTPRequestCompletionBlock)aHandler {
+	[self startBackgroundTask];
+	
 	self.completionHandler = aHandler;
 	
 	[[DCHTTPRequest connectionQueue] addOperation:self];
@@ -225,7 +241,23 @@
 	return request;
 }
 
+- (void)startBackgroundTask {
+	if (!self.backgroundSupported) return;
+	
+	UIApplication *application = [UIApplication sharedApplication];
+	
+	self.backgroundTaskIdentifier = [application beginBackgroundTaskWithExpirationHandler:^{
+		[self cancel];
+		
+        [application endBackgroundTask:self.backgroundTaskIdentifier];
+        self.backgroundTaskIdentifier = UIBackgroundTaskInvalid;
+    }];
+}
+
 - (void)finish {
+	[[UIApplication sharedApplication] endBackgroundTask:self.backgroundTaskIdentifier];
+	self.backgroundTaskIdentifier = UIBackgroundTaskInvalid;
+	
 	self.delegate = nil;
 	self.completionHandler = nil;
 	
@@ -304,6 +336,8 @@
 	if (self.delegate && [self.delegate respondsToSelector:@selector(requestFailed:withError:)]) {
 		[self.delegate requestFailed:self withError:error];
 	}
+	
+	[self finish];
 }
 
 
