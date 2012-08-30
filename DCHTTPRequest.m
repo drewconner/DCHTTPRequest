@@ -113,7 +113,8 @@
 		self.cachePolicy = NSURLRequestUseProtocolCachePolicy;
 		self.timeoutInterval = 60.0f;
 		
-		if ([[UIDevice currentDevice] respondsToSelector:@selector(isMultitaskingSupported)]) {
+		UIDevice *device = [UIDevice currentDevice];
+		if ([device respondsToSelector:@selector(isMultitaskingSupported)]) {
 			self.backgroundSupported = device.multitaskingSupported;
 		} else {
 			self.backgroundSupported = NO;
